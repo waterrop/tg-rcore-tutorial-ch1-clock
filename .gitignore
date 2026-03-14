@@ -1,4 +1,6 @@
 target
+tg-rcore-tutorial-*
+docs
 *.asm
 *.bin
 *.img

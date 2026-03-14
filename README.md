@@ -89,7 +89,7 @@ cargo --version    # 应显示 cargo 1.xx.x
 
 ### 1.2 添加 RISC-V 64 编译目标
 
-由于 tg-rcore-tutorial-ch1 是面向 RISC-V 64 裸机平台的程序，需要添加对应的编译目标：
+由于 tg-rcore-tutorial-ch1-clock 是面向 RISC-V 64 裸机平台的程序，需要添加对应的编译目标：
 
 ```bash
 rustup target add riscv64gc-unknown-none-elf
@@ -103,7 +103,7 @@ rustup target add riscv64gc-unknown-none-elf
 
 ### 1.3 安装 QEMU 模拟器
 
-tg-rcore-tutorial-ch1 在 QEMU 模拟的 RISC-V 64 虚拟机上运行，需要安装 `qemu-system-riscv64`（建议版本 >= 7.0）。
+tg-rcore-tutorial-ch1-clock 在 QEMU 模拟的 RISC-V 64 虚拟机上运行，需要安装 `qemu-system-riscv64`（建议版本 >= 7.0）。
 
 **Ubuntu / Debian：**
 
@@ -128,8 +128,8 @@ qemu-system-riscv64 --version
 **方式一**
 只获取本实验
 ```bash
-cargo clone tg-rcore-tutorial-ch1
-cd tg-rcore-tutorial-ch1
+cargo clone tg-rcore-tutorial-ch1-clock
+cd tg-rcore-tutorial-ch1-clock
 ```
 获取所有8个实验和所依赖的tg-* crates.
 **方式二**
@@ -138,11 +138,20 @@ git clone https://github.com/rcore-os/tg-rcore-tutorial.git
 cd tg-rcore-tutorial/ch1
 ```
 
+### 1.5 获取sbi
+> - `tg-rcore-tutorial-sbi` 需要拉取到本地才能修改其代码:
+>   - 在 tg-rcore-tutorial-ch1-clock 目录下执行 `cargo clone tg-rcore-tutorial-sbi` 拉取到本地
+>   - 在 tg-rcore-tutorial-ch1-clock/Cargo.toml 中修改 tg-rcore-tutorial-sbi 为本地路径：
+>     ```toml
+>     [dependencies]
+>     tg-rcore-tutorial-sbi = { path = "./tg-rcore-tutorial-sbi" }
+>     ```
+
 ## 二、编译与运行
 
 ### 2.1 编译
 
-在 `tg-rcore-tutorial-ch1` 目录下执行：
+在 `tg-rcore-tutorial-ch1-clock` 目录下执行：
 
 ```bash
 cargo build
@@ -157,7 +166,7 @@ target = "riscv64gc-unknown-none-elf"
 
 编译过程中，`build.rs` 构建脚本会自动检测目标架构，为 RISC-V 64 生成链接脚本（linker.ld），控制程序的内存布局。
 
-编译成功后，可执行文件位于 `target/riscv64gc-unknown-none-elf/debug/tg-rcore-tutorial-ch1`。
+编译成功后，可执行文件位于 `target/riscv64gc-unknown-none-elf/debug/tg-rcore-tutorial-ch1-clock`。
 
 ### 2.2 运行
 
@@ -172,7 +181,7 @@ qemu-system-riscv64 \
     -machine virt \
     -nographic \
     -bios none \
-    -kernel target/riscv64gc-unknown-none-elf/debug/tg-rcore-tutorial-ch1
+    -kernel target/riscv64gc-unknown-none-elf/debug/tg-rcore-tutorial-ch1-clock
 ```
 
 **QEMU 参数说明：**
@@ -196,7 +205,7 @@ Hello, world!
 
 ## 三、操作系统核心概念
 
-以下内容帮助你理解 tg-rcore-tutorial-ch1 代码背后的操作系统原理。
+以下内容帮助你理解 tg-rcore-tutorial-ch1-clock 代码背后的操作系统原理。
 
 ### 3.1 应用程序执行环境
 

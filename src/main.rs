@@ -26,23 +26,9 @@
 
 // 引入 SBI 调用库，提供 console_putchar（输出字符）和 shutdown（关机）功能
 // 启用 nobios 特性后，tg_sbi 内建了 M-mode 启动代码，无需外部 SBI 固件
-use tg_sbi::{console_putchar, shutdown, set_timer};
+use tg_sbi::{console_putchar, shutdown, set_timer, rdtime};
 
-// 引入sie模块
-mod sie;
-
-/// 读取当前时间 (mtime 寄存器)
-///
-/// RISC-V 中有一个内存映射的定时器 (mtime)，可以通过 rdtime 指令读取。
-/// 返回值是以时钟 tick 为单位的当前时间。
-///
-/// QEMU virt 中，时钟频率通常是 10MHz (每微秒 10 个 tick)
-#[inline]
-fn rdtime() -> u64{
-    let mut time: u64;
-    unsafe{ core::arch::asm!("rdtime {}", out(reg) time); }
-    time
-}
+pub mod trap;
 
 
 /// S 态程序入口点。
@@ -85,37 +71,29 @@ unsafe extern "C" fn _start() -> ! {
 /// 通过 SBI 的 `console_putchar` 逐字节输出字符串，
 /// 然后调用 `shutdown` 正常关机退出 QEMU。
 extern "C" fn rust_main() -> ! {
+    // 设置stvec，将trap handling地址放入，以便中断处理时，有地方可去
+    trap::init();
     // 开启S特权级时钟中断
-    sie::set_stimer();
-    /*
-    // 调试：检查 sstatus
-    let sstatus: usize;
-    unsafe { core::arch::asm!("csrr {0}, sstatus", out(reg) sstatus) }
-    console_putchar(if (sstatus & 0x2) != 0 { b'Y' } else { b'N' });  // Y = OK, N = SIE not set
-
-    // 调试：检查 sie
-    let sie: usize;
-    unsafe { core::arch::asm!("csrr {0}, sie", out(reg) sie) }
-    console_putchar(if (sie & 0x20) != 0 { b'Y' } else { b'N' });  // Y = OK, N = STIE not set
-
-    // 调试：检查 mideleg（中断委托）
-    let mideleg: usize;
-    unsafe { core::arch::asm!("csrr {0}, mideleg", out(reg) mideleg) }
-    console_putchar(if (mideleg & 0x20) != 0 { b'Y' } else { b'N' });  // Y = OK, N = STIP not delegated
-    */
+    trap::enable_timer_interrupt();
+    
     // 设置第一次定时器中断
     let interval = 10_000_000u64;   // 定时器间隔：10,000,000 时钟周期 ≈ 1 秒 (假设 10MHz 时钟)
     let current_time = rdtime();
-    let mut next_tick = rdtime() + interval;
+    let mut next_time = current_time + interval;
     let mut cnt: usize = 0;
-    set_timer(current_time + interval);
+    set_timer(next_time);
+    for i in 0..16 {
+        let nibble = (next_time >> (60 - i*4)) & 0xF;
+        console_putchar(if nibble < 10 { b'0' + nibble as u8 } else { b'A' + (nibble - 10) as u8 });
+    }
     for c in b"Time started!\n" {   // 打印启动信息
         console_putchar(*c);
     }
     // 无限循环等待中断
     loop{
+        
         let current = rdtime();
-        if current >= next_tick {
+        if current >= next_time {
             if cnt == 10 {
                 for c in b"\nShutdown!\n" {   // 打印关机信息
                     console_putchar(*c);
@@ -123,95 +101,16 @@ extern "C" fn rust_main() -> ! {
                 break;
             }
             console_putchar(b't');
-            next_tick = current + interval;
-            set_timer(next_tick);
+            next_time = current + interval;
+            set_timer(next_time);
             cnt += 1;
         }
-        // 1.读取scause，判断中断类型
-        let mut scause: usize;
-        unsafe{ core::arch::asm!("csrr {0}, scause", out(reg) scause); }
-        // scause 最高位为 1 表示中断，为 0 表示异常
-        // 最低几位表示中断类型：
-        //   - 5 (0b00101): S-mode 定时器中断 (STIP)
-        //   - 1 (0b00001): S-mode 软件中断 (SSIP)
-        //   - 9 (0b01001): S-mode 外部中断 (SEIP)
-        if scause == 0x8000000000000005{
-            if cnt == 10 {
-                for c in b"Shutdown!\n" {   // 打印关机信息
-                    console_putchar(*c);
-                }
-                break;
-            }
-            // 输出字符
-            console_putchar(b't');
-            // 重新设置下一次定时器中断
-            let interval = 10_000_000u64;
-            let current_time = rdtime();
-            set_timer(current_time + interval);
-            cnt += 1;
-        }
-        // 清除挂起的定时器中断
-        unsafe{ core::arch::asm!("csrc sip, {0}", in(reg) (1 << 5)); }
+        
+        //unsafe { core::arch::asm!("wfi"); }
     }
 
     shutdown(false) // false 表示正常关机
 }
-
-/*
-/// S-mode trap handler (中断/异常处理函数)
-///
-/// 当发生定时器中断时，CPU 会自动跳转到 stvec 指向的地址。
-/// 我们需要在 trap handler 中：
-/// 1. 判断中断类型
-/// 2. 处理定时器中断（输出字符 + 重新设置定时器）
-/// 3. 返回原程序继续执行
-#[unsafe(no_mangle)]
-extern "C" fn s_trap_handler(){
-    //console_putchar(b'X');
-    // 保存寄存器（在栈上分配空间）
-    unsafe{
-        core::arch::asm!(
-            "addi sp, sp, -64",  // 分配栈空间
-            "sd ra, 0(sp)",      // 保存 ra
-            "sd t0, 8(sp)",      // 保存 t0
-            "sd t1, 16(sp)",     // 保存 t1
-            "sd a0, 24(sp)",     // 保存 a0
-        );
-    }
-    // 1.读取scause，判断中断类型
-    let mut scause: usize;
-    unsafe{ core::arch::asm!("csrr {0}, scause", out(reg) scause); }
-    // scause 最高位为 1 表示中断，为 0 表示异常
-    // 最低几位表示中断类型：
-    //   - 5 (0b00101): S-mode 定时器中断 (STIP)
-    //   - 1 (0b00001): S-mode 软件中断 (SSIP)
-    //   - 9 (0b01001): S-mode 外部中断 (SEIP)
-    let is_interrupt = (scause >> 63) != 0;
-    let interrupt_code = scause & 0xFFFF_FFFF;
-    if is_interrupt && interrupt_code == 5{
-        // 输出字符
-        console_putchar(b't');
-        // 重新设置下一次定时器中断
-        let interval = 10_000_000u64;
-        let current_time = rdtime();
-        set_timer(current_time + interval);
-    }
-    // 清除挂起的定时器中断
-    unsafe{ core::arch::asm!("csrc sip, {0}", in(reg) (1 << 5)); }
-    // 恢复寄存器
-    unsafe{
-        core::arch::asm!(
-            "ld ra, 0(sp)",
-            "ld t0, 8(sp)",
-            "ld t1, 16(sp)",
-            "ld a0, 24(sp)",
-            "addi sp, sp, 64",   // 释放栈空间
-            "sret",              // 返回到中断发生的位置
-        );
-    }
-    
-}
-*/
 
 /// panic 处理函数。
 ///
