@@ -28,8 +28,7 @@
 // 启用 nobios 特性后，tg_sbi 内建了 M-mode 启动代码，无需外部 SBI 固件
 use tg_sbi::{console_putchar, shutdown, set_timer, rdtime};
 
-pub mod trap;
-
+mod trap;
 
 /// S 态程序入口点。
 ///
@@ -71,27 +70,19 @@ unsafe extern "C" fn _start() -> ! {
 /// 通过 SBI 的 `console_putchar` 逐字节输出字符串，
 /// 然后调用 `shutdown` 正常关机退出 QEMU。
 extern "C" fn rust_main() -> ! {
-    // 设置stvec，将trap handling地址放入，以便中断处理时，有地方可去
-    //trap::init();
-    // 开启S特权级时钟中断
-    //trap::enable_timer_interrupt();
-    
+    trap::init();
     // 设置第一次定时器中断
     let interval = 10_000_000u64;   // 定时器间隔：10,000,000 时钟周期 ≈ 1 秒 (假设 10MHz 时钟)
     let current_time = rdtime();
-    let mut next_time = current_time + interval;
-    let mut cnt: usize = 0;
+    let next_time = current_time + interval;
+    //let mut cnt: usize = 0;
     set_timer(next_time);
-    for i in 0..16 {
-        let nibble = (next_time >> (60 - i*4)) & 0xF;
-        console_putchar(if nibble < 10 { b'0' + nibble as u8 } else { b'A' + (nibble - 10) as u8 });
-    }
     for c in b"Time started!\n" {   // 打印启动信息
         console_putchar(*c);
     }
     // 无限循环等待中断
     loop{
-        
+        /*
         let current = rdtime();
         if current >= next_time {
             if cnt == 10 {
@@ -100,16 +91,15 @@ extern "C" fn rust_main() -> ! {
                 }
                 break;
             }
-            console_putchar(b't');
+            console_putchar(b'T');
             next_time = current + interval;
             set_timer(next_time);
             cnt += 1;
         }
-        
-        //unsafe { core::arch::asm!("wfi"); }
+        */
     }
 
-    shutdown(false) // false 表示正常关机
+    //shutdown(false) // false 表示正常关机
 }
 
 /// panic 处理函数。
