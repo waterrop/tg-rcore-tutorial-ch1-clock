@@ -72,9 +72,9 @@ unsafe extern "C" fn _start() -> ! {
 /// 然后调用 `shutdown` 正常关机退出 QEMU。
 extern "C" fn rust_main() -> ! {
     // 设置stvec，将trap handling地址放入，以便中断处理时，有地方可去
-    trap::init();
+    //trap::init();
     // 开启S特权级时钟中断
-    trap::enable_timer_interrupt();
+    //trap::enable_timer_interrupt();
     
     // 设置第一次定时器中断
     let interval = 10_000_000u64;   // 定时器间隔：10,000,000 时钟周期 ≈ 1 秒 (假设 10MHz 时钟)
