@@ -10,6 +10,7 @@ readme = "README.md"
 keywords = ["rcore", "tutorial", "no-std", "riscv", "bare-metal", "ai", "ai4ose", "kernel", "learning", "os"]
 categories = ["no-std", "embedded"]
 build = "build.rs"
+include = ["src/**/*.rs", "src/**/*.asm", "Cargo.toml", "README.md"]
 
 [[bin]]
 name = "tg-rcore-tutorial-ch1-clock"

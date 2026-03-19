@@ -1,6 +1,5 @@
 target
 tg-rcore-tutorial-*
-*.asm
 *.bin
 *.img
 Cargo.lock
