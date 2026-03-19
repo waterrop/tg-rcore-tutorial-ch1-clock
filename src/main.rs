@@ -17,11 +17,32 @@
 
 #![no_std]
 #![no_main]
-#![cfg_attr(target_arch = "riscv64", deny(warnings, missing_docs))]
+#![cfg_attr(target_arch = "riscv64", deny(warnings))]
 #![cfg_attr(not(target_arch = "riscv64"), allow(dead_code))]
 
-#[unsafe(no_mangle)]
+mod timer;
+mod trap;
+
+use tg_sbi::shutdown;
+
+#[cfg(target_arch = "riscv64")]
+core::arch::global_asm!(include_str!("m_entry.asm"));
+
+fn uart_putchar(c: u8) {
+    const UART_THR: *mut u8 = 0x1000_0000 as *mut u8;
+    unsafe {
+        UART_THR.write_volatile(c);
+    }
+}
+
 extern "C" fn rust_main() -> ! {
+    let start_ms = timer::get_time_ms();
+    uart_putchar(b'U');
+    uart_putchar(b'\n');
+    trap::init(start_ms);
+    loop {
+        unsafe { core::arch::asm!("wfi") };
+    }
 }
 
 #[cfg(target_arch = "riscv64")]
